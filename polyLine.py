@@ -27,31 +27,33 @@ class polyLine:
 
 #['mitochondrion', '1660', 'R', 'Unknown', '0.0127388535031847', 'Unknown', '-', '-', '-', '-', '-', '-', '-', '-', '-', '1760', '1834', '0.0127388535031847', '314', '4', '310', '0\n']
 
-    def __init__(self,raw_line):
+    def __init__(self,raw_line,sample_id):
+        self.raw_line = raw_line
+        self.sample = sample_id
         self.sline = raw_line.split("\t")
-        self.chrom = sline[0]
-        self.pos = sline[1]
-        self.dirSupport = sline[2]
-        self.family = sline[3]
-        self.freq = sline[4]
-        self.order = sline[5]
-        self.id = sline[6]
-        self.comment = sline[7]
+        self.chrom = self.sline[0]
+        self.pos = self.sline[1]
+        self.dirSupport = self.sline[2]
+        self.family = self.sline[3]
+        self.freq = self.sline[4]
+        self.order = self.sline[5]
+        self.id = self.sline[6]
+        self.comment = self.sline[7]
 
-        self.startRangeForward = sline[8]
-        self.endRangeForward = sline[9]
-        self.freqEstForward = sline[10]
-        self.depthForward = sline[11]
-        self.TEreadsFwd = sline[12]
-        self.nonTE_reads_Fwd = sline[13]
-        self.forward_range_overlap = sline[14]
+        self.startRangeForward = self.sline[8]
+        self.endRangeForward = self.sline[9]
+        self.freqEstForward = self.sline[10]
+        self.depthForward = self.sline[11]
+        self.TEreadsFwd = self.sline[12]
+        self.nonTE_reads_Fwd = self.sline[13]
+        self.forward_range_overlap = self.sline[14]
 
-        self.start_range_reverse = sline[15]
-        self.end_range_reverse = sline[16]
-        self.depth_reverse = sline[17]
-        self.TE_reads_reverse = sline[18]
-        self.nonTE_reads_reverse = sline[19]
-        self.reverse_range_overlap = sline[20] 
+        self.start_range_reverse = self.sline[15]
+        self.end_range_reverse = self.sline[16]
+        self.depth_reverse = self.sline[17]
+        self.TE_reads_reverse = self.sline[18]
+        self.nonTE_reads_reverse = self.sline[19]
+        self.reverse_range_overlap = self.sline[20] 
         
 
 
