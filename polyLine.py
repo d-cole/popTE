@@ -33,7 +33,7 @@ class polyLine:
         self.sline = raw_line.split("\t")
         self.chrom = self.sline[0]
         self.pos = self.sline[1]
-        self.dirSupport = self.sline[2]
+        self.direction = self.sline[2]
         self.family = self.sline[3]
         self.freq = self.sline[4]
         self.order = self.sline[5]
@@ -43,18 +43,71 @@ class polyLine:
         self.startRangeForward = self.sline[8]
         self.endRangeForward = self.sline[9]
         self.freqEstForward = self.sline[10]
-        self.depthForward = self.sline[11]
-        self.TEreadsFwd = self.sline[12]
-        self.nonTE_reads_Fwd = self.sline[13]
+        self.depth_forward = self.sline[11]
+        self.TE_reads_forward = self.sline[12]
+        self.nonTE_reads_forward = self.sline[13]
         self.forward_range_overlap = self.sline[14]
 
         self.start_range_reverse = self.sline[15]
         self.end_range_reverse = self.sline[16]
-        self.depth_reverse = self.sline[17]
-        self.TE_reads_reverse = self.sline[18]
-        self.nonTE_reads_reverse = self.sline[19]
-        self.reverse_range_overlap = self.sline[20] 
-        
+        self.freqEstReverse = self.sline[17]
+        self.depth_reverse = self.sline[18]
+        self.TE_reads_reverse = self.sline[19]
+        self.nonTE_reads_reverse = self.sline[20]
+        self.reverse_range_overlap = self.sline[21] 
+
+        self.process_info()
+#        print self.raw_line
+#        print self.__repr__()
+
+    def __repr__(self):
+        repr_str = str(self.chrom) + "\t" + self.pos + "\t" + self.direction + "\t" + self.family + "\t" + str(self.freq) + "\t" + self.order + "\t" + self.id + "\t" + \
+            self.comment + "\t" + self.startRangeForward + "\t" + self.endRangeForward + "\t" + str(self.freqEstForward) + "\t" + \
+                str(self.depth_forward) + "\t" + str(self.TE_reads_forward) + "\t" + str(self.nonTE_reads_forward) + "\t" + self.forward_range_overlap + \
+                "\t" + self.start_range_reverse + "\t" + self.end_range_reverse + "\t" + self.freqEstReverse + "\t" + \
+                str(self.depth_reverse) + "\t" + str(self.TE_reads_reverse) + "\t" + str(self.nonTE_reads_reverse) + "\t" + self.reverse_range_overlap + "\n"
+        return repr_str
+
+       
+ 
+    def process_info(self):
+        """
+        """
+        if self.depth_forward == "-":
+            self.depth_forward = 0         
+        else:
+            self.depth_forward = int(self.depth_forward)
+
+        if self.depth_reverse == "-":
+            self.depth_reverse = 0
+        else:
+            self.depth_Reverse = int(self.depth_reverse)
+
+        if self.TE_reads_forward == "-":
+            self.TE_reads_forward = 0
+        else:
+            self.TE_reads_forward = int(self.TE_reads_forward)
+
+        if self.TE_reads_reverse == "-":
+            self.TE_reads_reverse = 0
+        else:
+            self.TE_reads_reverse = int(self.TE_reads_reverse)
+
+        if self.nonTE_reads_forward == "-":
+            self.nonTE_reads_forward = 0
+        else:
+            self.nonTE_reads_forward = int(self.nonTE_reads_forward)
+
+        if self.nonTE_reads_reverse == "-":
+            self.nonTE_reads_reverse = 0
+        else:
+            self.nonTE_reads_reverse = int(self.nonTE_reads_reverse)
+
+        self.freq = float(self.freq)
+
+
+
+
 
 
 
