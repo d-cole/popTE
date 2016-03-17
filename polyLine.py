@@ -55,7 +55,8 @@ class polyLine:
         self.TE_reads_reverse = self.sline[19]
         self.nonTE_reads_reverse = self.sline[20]
         self.reverse_range_overlap = self.sline[21] 
-
+        self.total_TE_depth = None
+        self.total_ref_depth = None
         self.process_info()
 #        print self.raw_line
 #        print self.__repr__()
@@ -73,6 +74,7 @@ class polyLine:
     def process_info(self):
         """
         """
+        self.pos = float(self.pos)
         if self.depth_forward == "-":
             self.depth_forward = 0         
         else:
@@ -102,6 +104,9 @@ class polyLine:
             self.nonTE_reads_reverse = 0
         else:
             self.nonTE_reads_reverse = int(self.nonTE_reads_reverse)
+
+        self.total_TE_depth = self.TE_reads_forward + self.TE_reads_reverse
+        self.total_ref_depth = self.nonTE_reads_forward + self.nonTE_reads_reverse
 
         self.freq = float(self.freq)
 
