@@ -62,12 +62,7 @@ class polyLine:
 #        print self.__repr__()
 
     def __repr__(self):
-        repr_str = str(self.chrom) + "\t" + self.pos + "\t" + self.direction + "\t" + self.family + "\t" + str(self.freq) + "\t" + self.order + "\t" + self.id + "\t" + \
-            self.comment + "\t" + self.startRangeForward + "\t" + self.endRangeForward + "\t" + str(self.freqEstForward) + "\t" + \
-                str(self.depth_forward) + "\t" + str(self.TE_reads_forward) + "\t" + str(self.nonTE_reads_forward) + "\t" + self.forward_range_overlap + \
-                "\t" + self.start_range_reverse + "\t" + self.end_range_reverse + "\t" + self.freqEstReverse + "\t" + \
-                str(self.depth_reverse) + "\t" + str(self.TE_reads_reverse) + "\t" + str(self.nonTE_reads_reverse) + "\t" + self.reverse_range_overlap + "\n"
-        return repr_str
+        return self.raw_line
 
        
  

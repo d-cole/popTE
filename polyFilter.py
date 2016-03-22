@@ -24,6 +24,79 @@ target_genotype = both_genotypes
 
 #Remember calculated Pvals to speed finding Pvals
 Pval_dict = {}
+n = 1000
+
+
+def get_samples_in_range(TE_pos,target_site,range_size):
+    """
+    """ 
+    global n
+    chrom = target_site.chrom
+    pos = target_site.pos
+    left_pos, right_pos = None, None 
+
+    new_window_sites = []
+    pos_idx = int(pos/n)
+    window_start = pos_idx*n
+    window_pos = int(pos) - int(window_start)
+    
+
+    # Only have  to check the right window
+    if window_pos > 500:
+        #Want to check range pos:pos+500
+        pos_right_border = pos + range_size
+        print "right",pos_idx
+        pos_idx = int(pos_right_border/n)
+        window = TE_pos[chrom].get(pos_idx,None)
+
+        if window != None:
+            for site in window:
+               if site.pos < pos_right_border:
+                    new_window_sites.append(site)
+        
+    #Only check the left window  
+    if window_pos < 500:
+        pos_left_border = pos - range_size
+        pos_idx = int(pos_left_border/n)
+        print "left",pos_idx
+        window = TE_pos[chrom].get(pos_idx,None)
+
+        if window != None:
+            for site in window:
+                if site.pos > pos_left_border:
+                    new_window_sites.append(site)
+    return new_window_sites
+
+
+def filt_singleton_edge(TE_pos, singletons):
+    """
+    Fix problem with windows causing false positive singletons
+    """
+    global n
+    window_width = n/2
+    new_singletons = {}
+
+    #Loop through every singleton TE read
+    for chrom in singletons.keys():
+        for site_range in singletons[chrom].keys():
+            for singleton_site in singletons[chrom][site_range]:
+            
+                print "single range: ", site_range 
+                #Get samples with TEs present in the new window 500 bp on either side of TE
+                new_window_samples = get_samples_in_range(TE_pos,singleton_site,window_width)
+                false_singleton = False 
+
+                for TE in new_window_samples:
+                    if TE.sample != singleton_site.sample:
+                        false_singleton = True
+                
+                if false_singleton is not True:
+                    new_singletons[chrom] = new_singletons.get(chrom,{})                     
+                    new_singletons[chrom][site_range] = new_singletons[chrom].get(site_range,[])
+                    new_singletons[chrom][site_range].append(singleton_site) 
+     
+
+    return new_singletons
 
 
 def num_sample_in_window(window):
@@ -397,6 +470,7 @@ def get_excl_sites(CC_sites, GP_sites):
     
     return mut_excl_sites
 
+
 def plot_freq_window_pos(TE_pos,n,file_prefix):
     """
     """
@@ -433,7 +507,6 @@ def plot_freq_window_pos(TE_pos,n,file_prefix):
 
 if __name__ == "__main__":
     #!Base pair window size
-    n = 1000
     
     # ----------------------------------------------
     #CC_pos = get_TE_dict(CC_mod,n)
@@ -460,7 +533,17 @@ if __name__ == "__main__":
 
     filter_singletons = get_filtered_ranges(single_sites)
     print "filtered singletons: " + str(count_windows(filter_singletons))
+    
 
+    #New filter edge cases
+    window_filt_single = filt_singleton_edge(TE_pos,filter_singletons)
+    print "window filter singletons ", count_windows(window_filt_single)
+
+    
+    plot_freq_window_pos(window_filt_single,n,"window_")
+#    plot_freq_TE_depth(window_filt_single,"window_filt_single.png")
+
+#    sys.exit()
     #    PLOT FREQUENCY BY TE READ DEPTH
     #plot_freq_TE_depth(global_sites,"global.png")
     #plot_freq_TE_depth(single_sites,"single.png")
@@ -469,10 +552,10 @@ if __name__ == "__main__":
 
     #    PLOT FREQUENCY BY RELATIVE POS IN WINDOW 
     #       - ARE THE HOMOZYGOUS SINGLETONS ON WINDOW EDGES?  
-    plot_freq_window_pos(filter_singletons, n,"filt_single")
-    plot_freq_window_pos(TE_pos,n,"all")
-    plot_freq_window_pos(global_sites,n,"global_")
-    plot_freq_window_pos(single_sites,n,"single_")
+#    plot_freq_window_pos(filter_singletons, n,"filt_single")
+#    plot_freq_window_pos(TE_pos,n,"all")
+#    plot_freq_window_pos(global_sites,n,"global_")
+#    plot_freq_window_pos(single_sites,n,"single_")
 
     sys.exit()
     #write_singleton_file(filter_singletons,"filtered_singletons.txt")
@@ -518,7 +601,11 @@ if __name__ == "__main__":
 #    plot_hist(singleton_Pvals,"Pvalue of TEread vs. nonTE reads","1kbp_t2_singleton_Pvals.png")
 #    plot_hist(global_Pvals,"Pvalue of TEreads vs. nonTE reads","1kbp_global_Pvals.png")
 #    plot_hist(filtered_Pvals,"Pvalue of TEreads vs. nonTE reads","1kbp_filt_singletons_Pvals.png")
-#
-#
+
+
+
+
+
+
 
 
