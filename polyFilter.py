@@ -1,3 +1,8 @@
+"""
+polyFilter.py
+
+
+"""
 import sys
 from polyLine import polyLine
 import matplotlib.pyplot as plt
@@ -9,26 +14,94 @@ import matplotlib.image as mpimg
 import subprocess
 import re
 from pyBinom import pbinom
-
-#!!! - SAMPLES G and M
-
+from TE_plots import *
+import operator
 
 CC = ["CC_A","CC_B","CC_C","CC_D","CC_E","CC_F","CC_G","CC_H","CC_I","CC_J","CC_K","CC_L","CC_M","CC_N","CC_O","CC_P"]
 GP = ["GP2-3_A","GP2-3_B","GP2-3_C","GP2-3_D","GP2-3_E","GP2-3_F","GP2-3_G","GP2-3_H","GP2-3_I","GP2-3_J","GP2-3_K","GP2-3_L","GP2-3_M","GP2-3_N","GP2-3_O","GP2-3_P"]
-
 #Excludes samples G and M from CC genotype
 CC_mod = ["CC_A","CC_B","CC_C","CC_D","CC_E","CC_F","CC_H","CC_I","CC_J","CC_K","CC_L","CC_N","CC_O","CC_P"]
+wo_AP_CC = ["CC_B","CC_C","CC_D","CC_E","CC_F","CC_H","CC_I","CC_J","CC_K","CC_L","CC_N","CC_O"]
+wo_AP_GP = ["GP2-3_B","GP2-3_C","GP2-3_D","GP2-3_E","GP2-3_F","GP2-3_G","GP2-3_H","GP2-3_I","GP2-3_J","GP2-3_K","GP2-3_L","GP2-3_M","GP2-3_N","GP2-3_O"]
 
 both_genotypes = CC_mod + GP
+wo_AP_both = wo_AP_CC + wo_AP_GP
 target_genotype = both_genotypes
-
 #Remember calculated Pvals to speed finding Pvals
 Pval_dict = {}
 n = 1000
+poly_dir = "./poly_files/"
+
+def loadTEranges(TE_file_loc):
+    """
+    Given location of TE ranges returns dictionary of TE ranges.
+    Load TE ranges from a text file of the format CHROM START STOP.
+    """
+    TE_ranges = {}
+    CHROM,START,STOP = 0,1,2
+
+    with open(TE_file_loc) as TE_file:
+        for line in TE_file:
+            line_col = str.split(line)
+            TE_ranges[line_col[CHROM]] = TE_ranges.get(line_col[CHROM],[])
+            TE_ranges[line_col[CHROM]].append((line_col[START],line_col[STOP]))
+
+    TE_file.close()
+    return TE_ranges
+
+
+def get_valid_ranges(TE_dict,TE_ranges):
+    """
+    Given TE_dict and masked ranges TE_ranges, 
+        return sites from TE_dict that pass masked distance filter from TE_ranges sites.
+    """
+    valid_TE = {}
+    for chrom in TE_dict.keys():
+        for pos_range in TE_dict[chrom].keys():
+            for site in TE_dict[chrom][pos_range]:
+                if far_from_masked(site,TE_ranges):
+                    valid_TE[chrom] = valid_TE.get(chrom,{})
+                    valid_TE[chrom][pos_range] = valid_TE[chrom].get(pos_range,[])
+                    valid_TE[chrom][pos_range].append(site) 
+    return valid_TE
+
+
+def far_from_masked(site,TE_ranges):
+    """
+    Return True if given site is at least dist bp away from any masked range in TE_ranges.
+    """
+    dist = 150
+    chrom  = site.chrom
+    pos = site.pos
+    right_pos = pos + dist
+    left_pos = pos - dist
+    near = False
+
+    #TE range = left_pos --> high_pos
+    for point in range(int(left_pos),int(right_pos)):
+        for (low,high) in TE_ranges[chrom]:
+            if point <= int(high) and point >= int(low):
+                near = True
+
+    return not near
+
+
+
+def get_all_TE_depth(TE_dict):
+    """
+    Returns list of depth of all TEs in TE_dict    
+    """
+    depths = []
+    for chrom in TE_dict.keys():
+        for pos_range in TE_dict[chrom]:
+            for site in TE_dict[chrom][pos_range]:
+                depths.append(site.total_TE_depth)
+    return depths
 
 
 def get_samples_in_range(TE_pos,target_site,range_size):
     """
+    Given a target_site, find any TEs present within 500bp (over window edges) in any other sample.
     """ 
     global n
     chrom = target_site.chrom
@@ -40,12 +113,10 @@ def get_samples_in_range(TE_pos,target_site,range_size):
     window_start = pos_idx*n
     window_pos = int(pos) - int(window_start)
     
-
     # Only have  to check the right window
-    if window_pos > 500:
+    if window_pos > n/2:
         #Want to check range pos:pos+500
         pos_right_border = pos + range_size
-        print "right",pos_idx
         pos_idx = int(pos_right_border/n)
         window = TE_pos[chrom].get(pos_idx,None)
 
@@ -55,16 +126,16 @@ def get_samples_in_range(TE_pos,target_site,range_size):
                     new_window_sites.append(site)
         
     #Only check the left window  
-    if window_pos < 500:
+    if window_pos < n/2:
         pos_left_border = pos - range_size
         pos_idx = int(pos_left_border/n)
-        print "left",pos_idx
         window = TE_pos[chrom].get(pos_idx,None)
 
         if window != None:
             for site in window:
                 if site.pos > pos_left_border:
                     new_window_sites.append(site)
+
     return new_window_sites
 
 
@@ -81,20 +152,20 @@ def filt_singleton_edge(TE_pos, singletons):
         for site_range in singletons[chrom].keys():
             for singleton_site in singletons[chrom][site_range]:
             
-                print "single range: ", site_range 
                 #Get samples with TEs present in the new window 500 bp on either side of TE
                 new_window_samples = get_samples_in_range(TE_pos,singleton_site,window_width)
-                false_singleton = False 
+                true_singleton = True
 
                 for TE in new_window_samples:
                     if TE.sample != singleton_site.sample:
-                        false_singleton = True
-                
-                if false_singleton is not True:
+                        #TE of other sample in window
+                        true_singleton = False
+               
+                #Singleton passed filters 
+                if true_singleton:
                     new_singletons[chrom] = new_singletons.get(chrom,{})                     
                     new_singletons[chrom][site_range] = new_singletons[chrom].get(site_range,[])
                     new_singletons[chrom][site_range].append(singleton_site) 
-     
 
     return new_singletons
 
@@ -112,6 +183,7 @@ def num_sample_in_window(window):
 
 def get_singleton_ranges(TE_pos):
     """
+    Find TE windows unique to one sample
     """
     TE_singletons = {}
     
@@ -124,18 +196,30 @@ def get_singleton_ranges(TE_pos):
     return TE_singletons
 
 
-def passBinom(TE_site, min_prob):
+def low_passBinom(TE_site, min_prob):
     """ 
-    
+    Return True if TE_site passes binomial test (prob > min_prob (0.02)).
     """
     altReads = TE_site.TE_reads_forward + TE_site.TE_reads_reverse
     refReads = TE_site.nonTE_reads_forward + TE_site.nonTE_reads_reverse
     binomResult = (getPval(TE_site) > min_prob)
-    return (binomResult and (altReads + refReads) > 3)
+    return (binomResult)
+
+
+def high_passBinom(TE_site, min_prob):
+    """ 
+    Return True if TE site passes high binomial test (1 - prob) > 0.02
+        - Possibly to filter for true heterozygotes    
+    """
+    altReads = TE_site.TE_reads_forward + TE_site.TE_reads_reverse
+    refReads = TE_site.nonTE_reads_forward + TE_site.nonTE_reads_reverse
+    binomResult = (1 - getPval(TE_site) > min_prob)
+    return (binomResult)
 
 
 def passDepth(TE_site, min_depth):
     """
+    Requires min_depth TE reads
     """
     altReads = TE_site.TE_reads_forward + TE_site.TE_reads_reverse
     refReads = TE_site.nonTE_reads_forward + TE_site.nonTE_reads_reverse
@@ -144,13 +228,15 @@ def passDepth(TE_site, min_depth):
 
 def passTEDepth(TE_site, min_depth, max_depth):
     """
+    Requires that TE read count > min_depth and < max_depth
     """
     altReads = TE_site.TE_reads_forward + TE_site.TE_reads_reverse
-    return (altReads > min_depth) and (altReads < max_depth)
+    return (altReads >= min_depth) and (altReads < max_depth)
 
 
 def getPval(TE_site):
     """
+    Get Pval of TE site assuming heterozygous for TE (p=0.5)
     """
     altReads = TE_site.TE_reads_forward + TE_site.TE_reads_reverse
     refReads = TE_site.nonTE_reads_forward + TE_site.nonTE_reads_reverse
@@ -159,9 +245,9 @@ def getPval(TE_site):
 
 def getAllPvals(TE_pos):
     """
+    Return a list of P values from cumulative binomial test of TE vs. ref reads
     """
     Pvals = []
-
     for chrom in TE_pos.keys():
         for pos in TE_pos[chrom].keys():
             for site in TE_pos[chrom][pos]:
@@ -209,32 +295,12 @@ def get_ranges_by_sample_count(TE_pos,sample_count):
 
     return TEs_present
 
-
-def get_ranges_by_sample_range(TE_pos, sample_range):
-    """
-    Generates a dict of sites where a TE is present in sample_count or more samples
-    """
-    TEs_present = {}
-
-    for chrom in TE_pos.keys():
-            for pos_range in TE_pos[chrom].keys():
-                if num_sample_in_window(TE_pos[chrom][pos_range]) in sample_range:
-                    TEs_present[chrom] = TEs_present.get(chrom,{})
-                    TEs_present[chrom][pos_range] = TE_pos[chrom][pos_range]
-
-    return TEs_present
-
-
 def window_filter(window):
     """
-    Filters:
-        - Must have same family?
-        - Must have forward and reverse insertions present
-        - Frequency around 0.5?
-        - Atleast converage of ?
+    Given a TE window, return True if atleast one site in the window passes binomial and depth filters.
     """
     min_TE_depth = 3
-    max_TE_depth = 100
+    max_TE_depth = 30
     min_prob = 0.02
 
     forward = False
@@ -242,18 +308,6 @@ def window_filter(window):
     Coverage = 0
     family = None
 
-    # At least one forward and one reverse of the same family
-    #pass_dir_test = True
-    #family_directions={"F":[],"R":[],"FR":[]}
-    #for pLine in window:
-    #    family_directions[pLine.direction].append(pLine.family)
-    #
-    #if (len(family_directions["FR"]) != 0) or (len(family_directions["F"] \
-    #    + family_directions["R"]) != len(set(family_directions["F"] + family_directions["R"]))):
-    #    
-    #    pass_dir_test = True
-    #           
-  
     #IF ONE site in the window passes the binomial test --> window passes 
     # IF One site (not necessarily the same) passes the binomial test --> window passes
     #       What would a site be like with the sites being passed from exclusive sites?
@@ -261,36 +315,17 @@ def window_filter(window):
     TE_depth_pass = False
     binom_pass = False
     for site in window:
-        if passBinom(site, min_prob):
-            binom_pass = True
-        if passTEDepth(site,min_TE_depth,max_TE_depth):
+         if low_passBinom(site, min_prob) and passTEDepth(site,min_TE_depth,max_TE_depth):
             TE_depth_pass = True
- 
-    # Minimum average of coverage across sites in window
-#    pass_coverage = False
-#    num_sites = 0.0
-#    coverage_total = 0.0 
-#    for pLine in window:
-#        num_sites += 1.0 
-#        coverage_total += (pLine.TE_reads_forward + pLine.TE_reads_reverse)
-#    
-#    if coverage_total/num_sites > min_avg_TE_coverage:
-#        pass_coverage = True
-#
+            binom_pass = True
+
     return binom_pass  
 
-def freq_by_TE_depth(TE_pos,depth):
-    depth_freq = []
-    for chrom in TE_pos.keys():
-        for site_range in TE_pos[chrom].keys():
-            for pos in TE_pos[chrom][site_range]:
-                if passTEDepth(pos, depth):
-                    depth_freq.append(pos.freq)
-    return depth_freq
-                     
 
 def get_filtered_ranges(TE_pos):
     """
+    Given TE_dict return new TE dict of TE windows which pass window_filter().
+
     """
     filtered_TEs = {}
     
@@ -306,42 +341,45 @@ def get_filtered_ranges(TE_pos):
 
 def count_windows(TE_pos):
     """
+    Return the number of TE windows present in a TE dict.
     """
     count = 0
     for chrom in TE_pos.keys():
         count += len(TE_pos[chrom].keys())    
 
     return count
+
+def count_sites(TE_pos):
+    """
+    Return the number of sites present in a TE dict.
+        Multiple sites per TE window.
+    """
+    count = 0
+    for chrom in TE_pos.keys():
+        for pos_range in TE_pos[chrom]:
+            count += len(TE_pos[chrom][pos_range])    
+
+    return count
    
  
-def write_singleton_file(singletons,filename):
+def write_TE_file(TE_dict,filename):
     """
+    Write out TE dict to given filename.
     """
     file_out = open(filename,"w")
-    for chrom in singletons.keys():
-        for pos_range in singletons[chrom].keys():
-            for pLine in singletons[chrom][pos_range]:
+    for chrom in TE_dict.keys():
+        for pos_range in TE_dict[chrom].keys():
+            for pLine in TE_dict[chrom][pos_range]:
                 out_line = pLine.sample + "\t" + pLine.raw_line
+                #out_line = pLine.raw_line
                 file_out.write(out_line)    
 
     file_out.close()
 
 
-
-def sites_per_bp_range():
-    """
-    """
-    pass
-
-
-def global_sites_per_n():
-    """
-    """
-    pass
-
-
 def init_TE_dict():
     """
+    Initializes a TE dict with chromosome keys.
     """
     TE_pos = {"mitochondrion":{},"chloroplast":{}} 
     for i in range(0,33):
@@ -353,11 +391,16 @@ def init_TE_dict():
 
 def get_TE_dict(file_name_list,window_size):
     """
+    Given list of filenames, generates a TE dict of the format:
+        {chrom:{pos_range:[polyLine,polyLine, ...],pos_range:[polyLine,polyLine,...], ...}, ...}
+
+    Removes 'bad' chromosomes: pseudo0, mitochondrion, chloroplast
     """
+    global poly_dir
     TE_pos = init_TE_dict()
 
     for file_name in  (file_name_list):
-            with open("./poly_files/" + file_name) as file:
+            with open(poly_dir + file_name) as file:
                 for line in file:
                     #Init polyLine object representing one line in the polymorphism file
                     pLine = polyLine(line,file_name)
@@ -367,54 +410,18 @@ def get_TE_dict(file_name_list,window_size):
                     #print pos_key
                     TE_pos[pLine.chrom][pos_key] = TE_pos[pLine.chrom].get(pos_key,[])
                     TE_pos[pLine.chrom][pos_key].append(pLine)
+
+    bad_chroms = ["pseudo0","mitochondrion","chloroplast"]
+    for key in bad_chroms:
+        TE_pos.pop(key,None)
+
     return TE_pos
 
 
-def make_plot(fig_num,x_vals,y_vals,x_label,y_label,filename,in_label=None):
-    """ 
-    Plot the given data with axis labels. Legend/data labels optional.
-    Saves the image as the file specified by filename
-
-    *From A1 code
-    """
-    f,axarr = plt.subplots(1,1,sharex=False, sharey=False)
-    axarr.plot(x_vals,y_vals,label=in_label)
-    axarr.set_xlabel(x_label)
-    axarr.set_ylabel(y_label)
-    plt.savefig(filename,bbox_inches='tight')
-
-def plot_freq_TE_depth(TE_pos,filename):
-    freq = []
-    TE_depth = []
-    for chrom in TE_pos.keys():
-        for pos_range in TE_pos[chrom].keys():
-            for site in TE_pos[chrom][pos_range]:
-                freq.append(site.freq)                
-                TE_depth.append(site.total_TE_depth)
-
-    f,axarr = plt.subplots(1,1,sharex=False, sharey=False)
-    axarr.scatter(TE_depth,freq)
-    axarr.set_xlabel("TE depth")
-    axarr.set_ylabel("frequency")
-    plt.savefig(filename,bbox_inches='tight')
-
-    return
-
-def plot_hist(x_vals,x_label,filename):
-    f,axarr = plt.subplots(1,1,sharex=True,sharey=True)
-    axarr.hist(x_vals)
-    axarr.set_ylabel("Frequency")
-    axarr.set_xlabel(x_label)
-    plt.savefig(filename,bbox_inches='tight')
-
-
-def plot_all_num_with_TE_by_window_size(file_name_list):
-    for num_sample in range(1,len(file_name_list) + 1):
-        plot_num_samples_with_TE_by_window_size(file_name_list,num_sample)
-    return
-
-
 def get_all_freq(TE_pos):
+    """
+    Return list of all insertion frequencies from provided TE dict.
+    """
     freq = []
     for chrom in TE_pos.keys():
         for pos in TE_pos[chrom].keys():
@@ -422,88 +429,134 @@ def get_all_freq(TE_pos):
                 freq.append(site.freq)
     return freq
 
-     
-def get_avg_freq(TE_pos):
-    freq = get_all_freq(TE_pos)
-    total = sum(freq) 
-    return total/float(len(freq))
 
-
-def plot_num_samples_with_TE_by_window_size(file_name_list,num_samples):
+def get_directional_info(TE_dict):
     """
+    Returns directional info of insertions in provided TE dict.
     """
-    counts = []
-    window_sizes = []
+    dir_counts = {"F":0,"R":0,"FR":0,"RF":0}
+    for chrom in TE_dict.keys():
+        for pos_range in TE_dict[chrom].keys():
+            for site in TE_dict[chrom][pos_range]:
+                dir_counts[site.direction] = dir_counts.get(site.direction,0)
+                dir_counts[site.direction] = dir_counts[site.direction] + 1
 
-    for window_size in range(100,5000,100):
-
-        TE_pos = get_TE_dict(file_name_list,window_size)
-        TE_pos_only_num_samples_sites = get_ranges_by_sample_count(TE_pos,num_samples)
-        windows_with_num_samples = count_windows(TE_pos_only_num_samples_sites)
-        
-        window_sizes.append(window_size) 
-        counts.append(windows_with_num_samples)
-
-    filename = "num_sites_" + str(num_samples) + "_vs.Window_size.png"
-    make_plot(0,window_sizes,counts,"Window size (bp)","Number of sites with TE present in " + str(num_samples) + " samples",filename)
-    
-    return
+    return dir_counts
 
 
-def get_excl_sites(CC_sites, GP_sites):
+def get_high_freq(TE_dict):
     """
+    Returns TE dict of TE windows where at least one site has a frequency of 1.0.
     """
-   #s.symmetric_difference(t) 
-    mut_excl_sites = {}
-
-    for chrom in CC_sites:
-        for site_key in CC_sites[chrom].keys():
-            if GP_sites[chrom].get(site_key, None) == None:
-                mut_excl_sites[chrom] = mut_excl_sites.get(chrom, {})
-                mut_excl_sites[chrom][site_key] = CC_sites[chrom][site_key]
-            
-    for chrom in GP_sites:
-        for site_key in GP_sites[chrom].keys():
-            if CC_sites[chrom].get(site_key, None) == None:
-                mut_excl_sites[chrom] = mut_excl_sites.get(chrom, {})
-                mut_excl_sites[chrom][site_key] = GP_sites[chrom][site_key]
-    
-    return mut_excl_sites
-
-
-def plot_freq_window_pos(TE_pos,n,file_prefix):
-    """
-    """
-    freq = []
-    pos_diffs = []
-    pos_freq_1 = []
-
-    for chrom in TE_pos.keys():
-        for pos_range in TE_pos[chrom].keys():
-            for site in TE_pos[chrom][pos_range]:
-                freq.append(site.freq)
-                #Min diff from dist from pos to end of range or dist from pos to start of range
-                
-                pos_range_start = pos_range*n
-                pos_range_end = pos_range*n + n
-            
-                # GETs difference for either end
-                #pos_diff = min(abs((site.pos) - (pos_range_end)), abs((site.pos) - (pos_range_start)))
-            
-                pos_diff = site.pos - pos_range_start 
-                pos_diffs.append(pos_diff)
-            
+    high_freq = {}
+    for chrom in TE_dict.keys():
+        for pos_range in TE_dict[chrom].keys():
+            for site in TE_dict[chrom][pos_range]:
                 if site.freq == 1.0:
-                    pos_freq_1.append(pos_diff)
+                    passed = True
+                    high_freq[chrom] = high_freq.get(chrom,{})
+                    high_freq[chrom][pos_range] = high_freq[chrom].get(pos_range,[])
+                    high_freq[chrom][pos_range].append(site)
 
-    f,axarr = plt.subplots(1,1,sharex=False, sharey=False)
-    #axarr.scatter(pos_diffs,freq)
-    #axarr.hist(pos_diffs)
-    axarr.hist(pos_freq_1)
-    axarr.set_xlabel("pos_diff ")
-    axarr.set_ylabel("frequency")
-    plt.savefig(file_prefix + "freq_dist_window_edge.png",bbox_inches='tight')
-    return
+    return high_freq
+
+  
+def get_low_freq(TE_dict):
+    """
+    Given TE dict returns windows where all sites do not have a frequency of 1.0.
+    """
+    high_freq = {}
+    for chrom in TE_dict.keys():
+        for pos_range in TE_dict[chrom].keys():
+            for site in TE_dict[chrom][pos_range]:
+                if site.freq != 1.0:
+                    high_freq[chrom] = high_freq.get(chrom,{})
+                    high_freq[chrom][pos_range] = high_freq[chrom].get(pos_range,[])
+                    high_freq[chrom][pos_range].append(site)
+
+    return high_freq
+
+ 
+def get_range_dists(TE_dict):
+    """
+    Returns a list of the bp difference from start and end range
+    """
+    range_sizes = []
+    for chrom in TE_dict.keys():
+        for pos_range in TE_dict[chrom].keys():
+            diff = None
+            for site in TE_dict[chrom][pos_range]:
+
+                if site.direction == "R":
+                    diff = int(site.start_range_reverse) - int(site.end_range_reverse)
+
+                if site.direction == "F":
+                    diff = int(site.start_range_forward) - int(site.end_range_forward)
+
+                if site.direction == "FR":
+                    diff_F = int(site.start_range_forward) - int(site.end_range_forward)
+                    diff_R = int(site.start_range_reverse) - int(site.end_range_reverse)
+                    diff = (diff_R + diff_F)/2.0
+
+                range_sizes.append(diff)
+    return range_sizes
+
+
+def range_filter(site, min_range):
+    """
+    Returns True if given site has a TE-absence range of at least min_range.
+    """
+    diff = None
+
+    if site.direction == "R":
+        diff = int(site.start_range_reverse) - int(site.end_range_reverse)
+
+    if site.direction == "F":
+        diff = int(site.start_range_forward) - int(site.end_range_forward)
+
+    if site.direction == "FR":
+        diff_F = int(site.start_range_forward) - int(site.end_range_forward)
+        diff_R = int(site.start_range_reverse) - int(site.end_range_reverse)
+        diff = max(diff_F,diff_R)
+
+    return abs(diff) >= min_range
+
+
+def filter_abs_ranges(TE_dict):
+    """
+    Returns TE sites with valid TE-absence ranges. 
+    """
+    passed_ranges = {}
+    min_range = 73
+    for chrom in TE_dict.keys():
+       for pos_range in TE_dict[chrom].keys():
+           for site in TE_dict[chrom][pos_range]:
+                if range_filter(site,min_range):
+                    passed_ranges[chrom] = passed_ranges.get(chrom,{})
+                    passed_ranges[chrom][pos_range] = passed_ranges[chrom].get(pos_range,[])
+                    passed_ranges[chrom][pos_range].append(site)
+
+    return passed_ranges
+
+ 
+def get_family_counts(TE_dict):
+    """ 
+    Returns family count information of TE insertions.
+    """
+    families = {}
+    for chrom in TE_dict.keys():
+        for pos_range in TE_dict[chrom].keys():
+            family_site_count = {}
+            for site in TE_dict[chrom][pos_range]:
+                family_site_count[site.family] = families.get(site.family,0)
+                family_site_count[site.family] += 1
+
+            pos_family  = max(family_site_count.iteritems(), key=operator.itemgetter(1))[0]                 
+            families[pos_family] = families.get(pos_family,0)
+            families[pos_family] += 1
+
+    return families
+
 
 if __name__ == "__main__":
     #!Base pair window size
@@ -522,86 +575,164 @@ if __name__ == "__main__":
     #mut_excl_freq = get_all_freq(mut_excl_global)
     #plot_hist(mut_excl_freq,"Estimated TE frequency at site","mut_excl_freq_global_te_sites.png")
     ## -----------------------------------------------
-
+    
     TE_pos = get_TE_dict(target_genotype,n)
- 
+    print "TE_pos",count_windows(TE_pos)
+    print "TE_pos",count_sites(TE_pos)
+    TE_pos = filter_abs_ranges(TE_pos)
+    print "TE_pos_after",count_windows(TE_pos)
+    print "TE_pos_after",count_sites(TE_pos)
+
+
+    #REMOVE SITES WITHIN 50BP OF MASKED SEQUENCE 
+#    masked_ranges = remTE_range.loadTEranges("masked_ranges/incl_small_50bp+_range_parsed.txt")      
+#    print masked_ranges.keys()
+#    TE_pos_valid = remTE_range.get_valid_ranges(TE_pos,masked_ranges)
+#    write_TE_file(TE_pos_valid,"TE_pos_valid.txt")
+#    print "valid", count_windows(TE_pos_valid)
+
+
+
+
+    plot_count_by_samples_in(TE_pos,target_genotype,"num_TE_sample_count.png")
+
     single_sites = get_singleton_ranges(TE_pos)
     global_sites = get_global_ranges(TE_pos)
 
-    print "singleton ranges: " + str(count_windows(single_sites))
+    plot_depth_hist(single_sites,"no_AP_final_unfilt_singletons_depth.png")
+    plot_freq_hist(single_sites,"no_APfinal_unfilt_singletons_freq.png")
+
+    print "single", count_windows(single_sites)
+    print "singleton dir", get_directional_info(single_sites)
     print "global ranges: " + str(count_windows(global_sites))
+    print "global dir", get_directional_info(global_sites)
 
     filter_singletons = get_filtered_ranges(single_sites)
+    print "filtered with low freq and by min & max depth"
     print "filtered singletons: " + str(count_windows(filter_singletons))
-    
+    print "filtered dir", get_directional_info(filter_singletons)
 
     #New filter edge cases
     window_filt_single = filt_singleton_edge(TE_pos,filter_singletons)
-    print "window filter singletons ", count_windows(window_filt_single)
-
     
-    plot_freq_window_pos(window_filt_single,n,"window_")
-#    plot_freq_TE_depth(window_filt_single,"window_filt_single.png")
+    #Apply absence range cutoff
+    window_filt_single = filter_abs_ranges(window_filt_single)
 
-#    sys.exit()
-    #    PLOT FREQUENCY BY TE READ DEPTH
-    #plot_freq_TE_depth(global_sites,"global.png")
-    #plot_freq_TE_depth(single_sites,"single.png")
-    #plot_freq_TE_depth(filter_singletons,"filt_single.png")
-    #plot_freq_TE_depth(TE_pos,"all.png")
+    window_filt_single = get_filtered_ranges(window_filt_single)
 
-    #    PLOT FREQUENCY BY RELATIVE POS IN WINDOW 
-    #       - ARE THE HOMOZYGOUS SINGLETONS ON WINDOW EDGES?  
-#    plot_freq_window_pos(filter_singletons, n,"filt_single")
-#    plot_freq_window_pos(TE_pos,n,"all")
-#    plot_freq_window_pos(global_sites,n,"global_")
-#    plot_freq_window_pos(single_sites,n,"single_")
+
+#    masked_ranges = remTE_range.loadTEranges("masked_ranges/incl_small_50bp+_range_parsed.txt")      
+#    window_filt_single = remTE_range.get_valid_ranges(window_filt_single,masked_ranges)
+  
+#HERE
+    print "size before",count_windows(window_filt_single) 
+    masked_ranges = loadTEranges("masked_ranges/no_small_gtf_parsed.txt")    
+    window_filt_single = get_valid_ranges(window_filt_single,masked_ranges)    
+    print "size after",count_windows(window_filt_single) 
+
+    print "window filter singletons ", count_windows(window_filt_single)
+    print "window singletons: " + str(count_windows(window_filt_single))
+    print "window dir", get_directional_info(window_filt_single)
+
+#    plot_depth_hist(window_filt_single,"all_final_singletons_depth.png")
+#    plot_freq_hist(window_filt_single,"all_final_singletons_freq.png")
+ 
+
+    window_filt_single_low = get_low_freq(window_filt_single)
+    print "window filter singletons low ", count_windows(window_filt_single_low)
+    print "window singletons low: " + str(count_windows(window_filt_single_low))
+    print "window dir low", get_directional_info(window_filt_single_low)
+
+    plot_depth_hist(window_filt_single_low,"final_singletons_depth.png")
+    plot_freq_hist(window_filt_single_low,"final_singletons_freq.png")
+ 
+    window_filt_single_homz = get_high_freq(window_filt_single)
+    print "window filter singletons homz ", count_windows(window_filt_single_homz)
+    print "window singletons homz: " + str(count_windows(window_filt_single_homz))
+    print "window dir homz", get_directional_info(window_filt_single_homz)
+
+    plot_depth_hist(window_filt_single_homz,"final_Hom_singletons_depth.png")
+    plot_freq_hist(window_filt_single_homz,"final_Hom_singletons_freq.png")
+ 
+    write_TE_file(single_sites,"temp_unfiltered_singletons.txt")
+    write_TE_file(window_filt_single,"temp_singletons.txt")
+    write_TE_file(window_filt_single_low,"templow_singletons.txt")
+    write_TE_file(window_filt_single_homz,"temp_homz_singletons.txt")
+
+   # print(get_family_counts(window_filt_single_low))
 
     sys.exit()
-    #write_singleton_file(filter_singletons,"filtered_singletons.txt")
-#    plot_num_samples_with_TE_by_window_size(target_genotype,1)
-#    plot_num_samples_with_TE_by_window_size(target_genotype,len(target_genotype))
-#
-#    plot_all_num_with_TE_by_window_size(target_genotype)
+
+    global_sites = filter_ranges(global_sites)
+    filter_singletons = filter_ranges(filter_singletons)
+    window_filt_single = filter_ranges(window_filt_single)
+    window_filt_single_low = filter_ranges(window_filt_single_low)
+    window_filt_single_homz = filter_ranges(window_filt_single_homz)
+    print "AFTER"
+    print "global",count_windows(global_sites)
+    print "filter1",count_windows(filter_singletons)
+    print "filt2",count_windows(window_filt_single)
+    print "filt2_low",count_windows(window_filt_single_low)
+    print "filt2_homz",count_windows(window_filt_single_homz)
+    
 
 
-    #Plots number of TEs found by number of samples in
-    num_samples = []
-    counts = [] 
-    avg_freq = []
-    for i in range(1,len(target_genotype)+1):
-        num_samples.append(i)
-        target_ranges = get_ranges_by_sample_count(TE_pos,i)
-        tar_avg_freq = get_avg_freq(target_ranges)
-        avg_freq.append(tar_avg_freq)
-        counts.append(count_windows(target_ranges))
 
-    #Plot Number of samples with TE vs. number of TEs found
-#    make_plot(0,num_samples,counts,"TE in all x samples","Number of TEs","GP_TEcount_v_num_samples.png")
-#    make_plot(0,num_samples,avg_freq,"number of samples TEs in","Avg. TE frequency","TE_freq_by_in_all_samples.png")
-#
-#    #Get frequencies of TEs at sites
-    all_freq = get_all_freq(get_ranges_by_sample_count(TE_pos,len(target_genotype)))
-    plot_hist(all_freq,"Estimated TE frequency at site","freq_global_te_sites.png")
-#    
-#    #Get singleton and filtered singleton frequencies & PLOT
-    singleton_freq = get_all_freq(single_sites)
-    filt_singleton_freq = get_all_freq(filter_singletons)
-    plot_hist(singleton_freq,"Singleton EST TE freq","singleton_freq.png")
-    plot_hist(filt_singleton_freq,"Filtered (Depth 3 filter) Singleton Est TE freq","filt_singleton_Freq.png")    
+    #Plot range sizes
+    TE_pos_ranges = filter_ranges(TE_pos)
+    plot_freq_hist(TE_pos_ranges,"ra_all_TE_ranges.png")
+    plot_freq_hist(global_sites,"ra_global_Freq.png")
+    plot_freq_hist(window_filt_single,"ra_wind_freq.png")
+    plot_freq_hist(global_sites,"ra_global_Freq.png")
+    plot_freq_hist(window_filt_single,"ra_wind_freq.png")
 
 
-    #Get Pval distributions
-#    all_Pvals = getAllPvals(TE_pos)
-#    filtered_Pvals = getAllPvals(filter_singletons)
-#    singleton_Pvals = getAllPvals(single_sites)
-#    global_Pvals = getAllPvals(global_sites)
-#    
-#    plot_hist(all_Pvals,"Pvalue of TEread vs. nonTE reads","1kbp_all_Pval.png")
-#    plot_hist(singleton_Pvals,"Pvalue of TEread vs. nonTE reads","1kbp_t2_singleton_Pvals.png")
-#    plot_hist(global_Pvals,"Pvalue of TEreads vs. nonTE reads","1kbp_global_Pvals.png")
-#    plot_hist(filtered_Pvals,"Pvalue of TEreads vs. nonTE reads","1kbp_filt_singletons_Pvals.png")
 
+    ref_TE_loc = "refs_TE.txt"
+
+
+#    high_freq = get_high_freq(window_filt_single)
+    write_TE_file(window_filt_single_homz,"high_freq_singletons.txt")
+    write_TE_file(window_filt_single,"all_singletons.txt")
+#    write_TE_file(global_sites,"global_sites.txt")
+    sys.exit()
+#    plot_depth_hist(single_sites,"unfilt_singleton_TE_depth.png")
+#    plot_depth_hist(window_filt_single,"singletons_TE_depth.png") 
+#    plot_depth_hist(global_sites,"global_TE_depth.png")
+
+
+#    plot_freq_hist(single_sites,"unfilt_singleton_freq.png")
+    plot_freq_hist(window_filt_single,"no_max_singletons_freq.png") 
+#    plot_freq_hist(global_sites,"global_freq.png")
+
+    
+    
+#    write_singleton_file(window_filt_single,"window_filt_singletons.txt")
+
+#    plot_TEDepth_hist(window_filt_single,"singleton_depths.png")
+#    plot_TEDepth_hist(global_sites,"global_depths.png")
+
+ 
+    sys.exit() 
+
+   
+    #Directional support data
+    print "all"
+    print get_directional_info(TE_pos)
+
+    print "global"
+    print get_directional_info(global_sites)
+
+    print "singleton"
+    print_directional_info(single_sites)
+
+    print "filt_singleton"
+    print_directional_info(window_filt_single)
+
+
+
+    sys.exit() 
+    #Plot frequency of TE by distance to window edge 
 
 
 

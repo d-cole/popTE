@@ -1,3 +1,6 @@
+"""
+polyLine.py
+"""
 #Col1: the reference sequence ID
 #Col2: position in the reference sequence
 #Col3: is the TE insertion supported by a forward (F), by a reverse (R) or by both (FR) insertions
@@ -40,8 +43,8 @@ class polyLine:
         self.id = self.sline[6]
         self.comment = self.sline[7]
 
-        self.startRangeForward = self.sline[8]
-        self.endRangeForward = self.sline[9]
+        self.start_range_forward = self.sline[8]
+        self.end_range_forward = self.sline[9]
         self.freqEstForward = self.sline[10]
         self.depth_forward = self.sline[11]
         self.TE_reads_forward = self.sline[12]
@@ -68,6 +71,7 @@ class polyLine:
  
     def process_info(self):
         """
+        
         """
         self.pos = float(self.pos)
         if self.depth_forward == "-":
