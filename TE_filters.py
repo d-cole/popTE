@@ -17,9 +17,8 @@ Filters on:
  - Global
 
 
-
-IMPLEMENTED in TE_filters.py (May 4th 2016)
-
+IMPLEMENTED in TE_filters.py (May 5th 2016)
+ - TE-absence range filter
  - DISTANCE FROM MASKED SEQUENCE
  - HARD WINDOW EDGE CORRECTION FILTER
  - FILTERING BY # OF SAMPLES IN WINDOW - global and single
@@ -32,11 +31,38 @@ import sys
 from polyLine import polyLine
 from pyBinom import pbinom
 
+
+### BEGIN - TE-ABSENCE RANGE FILTERS ###
+def TE_absence_range_filter(site, *args):
+    """
+    Returns True if given site has a TE-absence range of at least min_range.
+    """
+    min_range = args[0]
+    diff = None
+
+    if site.direction == "R":
+        diff = int(site.start_range_reverse) - int(site.end_range_reverse)
+
+    if site.direction == "F":
+        diff = int(site.start_range_forward) - int(site.end_range_forward)
+
+    if site.direction == "FR":
+        diff_F = int(site.start_range_forward) - int(site.end_range_forward)
+        diff_R = int(site.start_range_reverse) - int(site.end_range_reverse)
+        diff = max(diff_F,diff_R)
+
+    return abs(diff) >= min_range
+### END - TE-ABSENCE RANGE FILTERS ###
+
+
 ### BEGIN - DISTANCE FROM MASKED SEQUENCE ###
-def dist_masked_filter(site, masked_ranges, min_dist):
+def dist_masked_filter(site, *args):
     """
     Returns true if given site is at least min_dist bp away from any masked_ranges.
     """
+    masked_ranges = args[0]
+    min_dist = args[1]
+#
     chrom = site.chrom
     pos = int(site.pos)
     right_pos = pos + int(min_dist)
@@ -106,15 +132,18 @@ def get_samples_in_range(TE_pos,target_site,range_size):
 
     return new_window_sites
 
-def singleton_edge_filter(all_TE_set, site, window_size):
+def singleton_edge_filter(site, *args):
     """
     Filter for sites with no trace of a TE within window_size/2 bp (Across window edges)
     """
+    all_TE_set = args[0]
+    window_size = args[1]
+
     site_pass = True
     half_window = window_size/2
-    
+   
     #Get list of TEs within half_window bp of given site
-    new_window_TEs = get_samples_in_range(all_TE_set, site, half_window)
+    new_window_TEs = get_samples_in_range(all_TE_set.sites, site, half_window)
    
     #Look for any new TEs not from the same sample as focal site 
     for TE in new_window_TEs:
@@ -130,19 +159,19 @@ def singleton_edge_filter(all_TE_set, site, window_size):
 
 
 ### BEGIN - FILTER FOR TE-WINDOWS BY # SAMPLES PRESENT ###
-def filter_window_by_sample_count(window,sample_count):
+def filter_window_by_sample_count(window,*args):
     """
     Return True for windows which contain sample_count samples
 
     sample_count == 1 --> Returns singletons
     sample_count == #Samples in analysis --> global TEs
     """
-    window_pass = False
+    sample_count = args[0]
 
     if num_sample_in_window(window) == sample_count:
-        window_pass = True
+        return True
 
-    return True
+    return False
 
 def num_sample_in_window(window):
     """
@@ -180,13 +209,13 @@ def low_passBinom(TE_site, min_prob):
     return (binomResult)
 
 
-def filter_window_quality(window, min_TE_depth, max_TE_depth, binom_min_prob):
+def filter_singleton_window(window, *args):
     """
     Given a TE window, return True if at least one site in the window passes binomial and depth filters.
     """
-    min_TE_depth = 3
-    max_TE_depth = 30
-    binom_min_prob = 0.02
+    min_TE_depth = args[0]
+    max_TE_depth = args[1]
+    binom_min_prob = args[2]
 
     TE_depth_pass = False
     binom_pass = False
@@ -196,7 +225,7 @@ def filter_window_quality(window, min_TE_depth, max_TE_depth, binom_min_prob):
             TE_depth_pass = True
             binom_pass = True
 
-    return (binom_pass and TE_depth)
+    return (binom_pass and TE_depth_pass)
 
 ### END - WINDOW QUALITY FILTER ###
 

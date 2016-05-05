@@ -70,7 +70,7 @@ def far_from_masked(site,TE_ranges):
     """
     Return True if given site is at least dist bp away from any masked range in TE_ranges.
     """
-    dist = 150
+    dist = 75
     chrom  = site.chrom
     pos = site.pos
     right_pos = pos + dist
@@ -579,10 +579,11 @@ if __name__ == "__main__":
     TE_pos = get_TE_dict(target_genotype,n)
     print "TE_pos",count_windows(TE_pos)
     print "TE_pos",count_sites(TE_pos)
+
+
     TE_pos = filter_abs_ranges(TE_pos)
     print "TE_pos_after",count_windows(TE_pos)
     print "TE_pos_after",count_sites(TE_pos)
-
 
     #REMOVE SITES WITHIN 50BP OF MASKED SEQUENCE 
 #    masked_ranges = remTE_range.loadTEranges("masked_ranges/incl_small_50bp+_range_parsed.txt")      
@@ -594,42 +595,40 @@ if __name__ == "__main__":
 
 
 
-    plot_count_by_samples_in(TE_pos,target_genotype,"num_TE_sample_count.png")
+#    plot_count_by_samples_in(TE_pos,target_genotype,"num_TE_sample_count.png")
 
     single_sites = get_singleton_ranges(TE_pos)
     global_sites = get_global_ranges(TE_pos)
 
-    plot_depth_hist(single_sites,"no_AP_final_unfilt_singletons_depth.png")
-    plot_freq_hist(single_sites,"no_APfinal_unfilt_singletons_freq.png")
+#    plot_depth_hist(single_sites,"no_AP_final_unfilt_singletons_depth.png")
+#    plot_freq_hist(single_sites,"no_APfinal_unfilt_singletons_freq.png")
 
-    print "single", count_windows(single_sites)
-    print "singleton dir", get_directional_info(single_sites)
-    print "global ranges: " + str(count_windows(global_sites))
-    print "global dir", get_directional_info(global_sites)
+    print "single sites: ", count_sites(single_sites)
+    print "single windows: ", count_windows(single_sites)
+    print "global sites: ", count_sites(global_sites)
+    print "global ranges: ", count_windows(global_sites)
 
     filter_singletons = get_filtered_ranges(single_sites)
-    print "filtered with low freq and by min & max depth"
+    print "filtered singletons sites: " + str(count_sites(filter_singletons))
     print "filtered singletons: " + str(count_windows(filter_singletons))
-    print "filtered dir", get_directional_info(filter_singletons)
-
+    
+    
     #New filter edge cases
     window_filt_single = filt_singleton_edge(TE_pos,filter_singletons)
-    
-    #Apply absence range cutoff
-    window_filt_single = filter_abs_ranges(window_filt_single)
 
-    window_filt_single = get_filtered_ranges(window_filt_single)
+    print "window filt singletons sites: ", str(count_sites(window_filt_single))
+    print "window filt singletons windows: ", str(count_windows(window_filt_single))
 
 
-#    masked_ranges = remTE_range.loadTEranges("masked_ranges/incl_small_50bp+_range_parsed.txt")      
-#    window_filt_single = remTE_range.get_valid_ranges(window_filt_single,masked_ranges)
-  
+ 
 #HERE
-    print "size before",count_windows(window_filt_single) 
     masked_ranges = loadTEranges("masked_ranges/no_small_gtf_parsed.txt")    
     window_filt_single = get_valid_ranges(window_filt_single,masked_ranges)    
-    print "size after",count_windows(window_filt_single) 
 
+    print "window filt singletons sites: ", str(count_sites(window_filt_single))
+    print "window filt singletons windows: ", str(count_windows(window_filt_single))
+
+    sys.exit()
     print "window filter singletons ", count_windows(window_filt_single)
     print "window singletons: " + str(count_windows(window_filt_single))
     print "window dir", get_directional_info(window_filt_single)
@@ -643,16 +642,16 @@ if __name__ == "__main__":
     print "window singletons low: " + str(count_windows(window_filt_single_low))
     print "window dir low", get_directional_info(window_filt_single_low)
 
-    plot_depth_hist(window_filt_single_low,"final_singletons_depth.png")
-    plot_freq_hist(window_filt_single_low,"final_singletons_freq.png")
+#    plot_depth_hist(window_filt_single_low,"final_singletons_depth.png")
+#    plot_freq_hist(window_filt_single_low,"final_singletons_freq.png")
  
     window_filt_single_homz = get_high_freq(window_filt_single)
     print "window filter singletons homz ", count_windows(window_filt_single_homz)
     print "window singletons homz: " + str(count_windows(window_filt_single_homz))
     print "window dir homz", get_directional_info(window_filt_single_homz)
 
-    plot_depth_hist(window_filt_single_homz,"final_Hom_singletons_depth.png")
-    plot_freq_hist(window_filt_single_homz,"final_Hom_singletons_freq.png")
+#    plot_depth_hist(window_filt_single_homz,"final_Hom_singletons_depth.png")
+#    plot_freq_hist(window_filt_single_homz,"final_Hom_singletons_freq.png")
  
     write_TE_file(single_sites,"temp_unfiltered_singletons.txt")
     write_TE_file(window_filt_single,"temp_singletons.txt")
