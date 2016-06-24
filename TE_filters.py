@@ -79,7 +79,73 @@ def dist_masked_filter(site, *args):
                 return far_from_masked
 
     return far_from_masked 
+
+
+def dist_extend_masked_filter(site, *args):
+    """
+    Instead of unextended masked ranges used in dist_masked_filter,
+        masked_ranges have been extended by 200bp on either side
+    Return False if site is contained within the extended masked ranges
+    """
+    masked_ranges = args[0]
+    chrom = site.chrom
+    pos = int(site.pos)
+
+    far_from_masked = True
+
+    for (low, high) in masked_ranges[chrom]:
+        if pos <= int(high) and pos >= int(low):
+            far_from_masked = False
+            return far_from_masked
+
+    return far_from_masked
+
 ### END - DISTANCE FROM MASKED SEQUENCE ###
+
+
+## Begin dist from same family masked sequence ###
+
+
+def dist_masked_family_seq(site, *args):
+    """ Returns whether site is within masked range of TE of the same family.
+
+    Args:
+        site: polyLine object
+        args[0]: masked ranges dictionary
+        args[1]: min range to be away from masked seq
+
+    Returns:
+        bool specifying if site is by masked range of same family 
+    """
+    ranges_dict = args[0]   
+    min_dist = args[1]
+    chrom = site.chrom
+    pos = int(site.pos)
+
+    if chrom in ranges_dict.keys():
+
+        site_left = pos - min_dist
+        site_right = pos + min_dist
+
+        #Check sites around TE site
+        for t_site in range(site_left, site_right):
+            if ranges_dict[chrom].get(t_site, None) != None:
+                #if any site is in a masked range of the same family --> filter failed
+                if site.family in ranges_dict[chrom][t_site]:
+                    return False
+
+    return True
+
+            
+
+
+
+
+
+### END masked seq same family ###
+
+
+
 
 
 ### BEGIN - FILTER EDGE CORRECTION ###

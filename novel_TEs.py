@@ -41,6 +41,31 @@ def loadTEranges(TE_file_loc):
 
 
 
+def load_classified_ranges(classified_ranges_loc):
+    """
+    """
+    chrom_idx, start_idx, end_idx, family_idx = 4, 5, 6, 10
+
+    ranges = {} 
+    with open(classified_ranges_loc) as f:
+        for line in f:
+            sline = line.split() 
+            chrom = sline[chrom_idx]
+            start = int(sline[start_idx])
+            end = int(sline[end_idx])
+            family = sline[family_idx]
+             
+            if ranges.get(chrom, None) == None:
+                ranges[chrom] = {}
+
+            for i in range(start, end + 1):
+                if ranges[chrom].get(i, None) == None:
+                    ranges[chrom][i] = [family]
+                else:
+                    ranges[chrom][i].append(family)
+
+    return ranges
+
 
 if __name__ == "__main__":
     #Initialize empty TE_set
@@ -69,16 +94,38 @@ if __name__ == "__main__":
     print filt_singleton_TE
     
     #Filter out false-positive singletons based on hard cutoff window
-
 #    edge_filt_singleton_TE = filt_singleton_TE.get_site_filtered_set(TE_filters.singleton_edge_filter, all_TE, window_size) --> 28 sites
     edge_filt_singleton_TE = filt_singleton_TE.get_site_filtered_set(TE_filters.singleton_edge_filter, abs_filt, window_size) #--> 29 sites
     print edge_filt_singleton_TE
+       
+
+ 
+    ##Filter based on distance to masked sequence
     
-    #Filter based on distance to masked sequence
+    #Should be really slow checking each point in range against all ranges in chrom
     masked_ranges = loadTEranges("masked_ranges/no_small_gtf_parsed.txt")
     min_masked_dist = 75
     masked_edge_filt_singleton_TE = edge_filt_singleton_TE.get_site_filtered_set(TE_filters.dist_masked_filter,masked_ranges, min_masked_dist)
     print masked_edge_filt_singleton_TE
-    
+
+
+    #Useing extended masked ranges means only checking one point against all ranges
+    alt_masked_ranges = loadTEranges("masked_ranges/200bp+_no_small_gtf_parsed.txt")
+    alt_masked_filt_singleton_TE = edge_filt_singleton_TE.get_site_filtered_set(TE_filters.dist_extend_masked_filter, alt_masked_ranges)
+    print alt_masked_filt_singleton_TE 
+
+    total = 0
+    for key in alt_masked_ranges.keys():
+        for (low, high) in alt_masked_ranges[key]:
+            total += int(high) - int(low)
+
+    print "Total unmasked: ", total
+
+
+    alt_masked_filt_singleton_TE.write_txt("alt_75bp+_masked.txt", True)
+    masked_edge_filt_singleton_TE.write_txt("75bp_masked.txt",True)
+
+
+ 
     
     
